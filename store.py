@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS users (
     row_zone     TEXT,      -- 'back_rows' | 'back_half' | 'middle_back'
     row_position TEXT,      -- 'center' | 'any'
     times        TEXT,      -- 'evenings_weekends' | 'weekends' | 'anytime'
+    party_size   TEXT,      -- '1' | '2' | '3' | '4'  (4 means 4 or more)
+    together     TEXT,      -- 'yes' | 'no' | 'na'  (na = party of one)
     status       TEXT,      -- 'signup' | 'active' | 'paused' | 'stopped'
     step         TEXT,      -- which signup question they're on
     joined_at    TEXT
@@ -49,9 +51,25 @@ def connect():
         _conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         _conn.row_factory = sqlite3.Row
         _conn.executescript(SCHEMA)
+        _migrate(_conn)
         _conn.commit()
         os.chmod(DB_PATH, 0o600)
     return _conn
+
+
+def _migrate(conn):
+    """Add columns introduced after someone already had a database.
+
+    Existing users default to a party of one, which is how the bot behaved
+    before party size existed, so nobody's alerts change until they /reset.
+    """
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    for column, default in (("party_size", "'1'"), ("together", "'na'")):
+        if column not in have:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT "
+                         f"DEFAULT {default}")
+            conn.execute(f"UPDATE users SET {column} = {default} "
+                         f"WHERE {column} IS NULL")
 
 
 def _now():

@@ -61,7 +61,7 @@ WELCOME = (
     "I watch The Odyssey in IMAX 70mm at the two Bay Area theatres that show "
     "it, and message you the moment a good seat opens up.\n\n"
     "Tickets are almost always sold out — these are cancellations, and they go "
-    "fast. Four quick questions and you're set."
+    "fast. A few quick questions and you're set."
 )
 
 QUESTIONS = {
@@ -89,9 +89,19 @@ QUESTIONS = {
          [("Weekends only", "times:weekends")],
          [("Anytime", "times:anytime")]],
     ),
+    "party_size": (
+        "How many seats do you need?",
+        [[("Just me", "party_size:1"), ("2", "party_size:2")],
+         [("3", "party_size:3"), ("4 or more", "party_size:4")]],
+    ),
+    "together": (
+        "Do they need to be side by side?",
+        [[("Yes — together or not at all", "together:yes")],
+         [("No — we can sit apart", "together:no")]],
+    ),
 }
 
-ORDER = ["theater", "row_zone", "row_position", "times"]
+ORDER = ["theater", "row_zone", "row_position", "times", "party_size", "together"]
 
 # First line of each question, for the "you picked X" confirmation.
 QUESTION_TITLE = {k: v[0].split("\n")[0] for k, v in QUESTIONS.items()}
@@ -103,13 +113,29 @@ CHOICE_LABEL = {data: text.split("·")[0].strip()
                 for row in rows for text, data in row}
 
 
+def party_of(user):
+    """How many seats they need, and whether they must be side by side."""
+    try:
+        size = int(user.get("party_size") or 1)
+    except (TypeError, ValueError):
+        size = 1
+    return max(1, size), (user.get("together") == "yes" and size > 1)
+
+
 def describe(user):
     where = ("both theatres" if user["theater"] == "both"
              else seats.THEATERS[user["theater"]]["name"])
     pos = "center seats only" if user["row_position"] == "center" else "any seat in the row"
+    size, together = party_of(user)
+    if size == 1:
+        party = "1 seat"
+    else:
+        party = (f"{size}{'+' if size >= 4 else ''} seats, "
+                 f"{'side by side' if together else 'happy to sit apart'}")
     return (f"{where}\n"
             f"{seats.ZONE_LABEL[user['row_zone']].capitalize()} or further back, {pos}\n"
-            f"{seats.TIME_LABEL[user['times']].capitalize()}")
+            f"{seats.TIME_LABEL[user['times']].capitalize()}\n"
+            f"{party}")
 
 
 class Conversation:
@@ -121,6 +147,11 @@ class Conversation:
         self.tg.send(chat_id, text, keyboard(rows))
         store.upsert(chat_id, step=step)
 
+    def begin(self, chat_id, intro):
+        store.upsert(chat_id, status="signup")
+        self.tg.send(chat_id, intro)
+        self.ask(chat_id, "theater")
+
     def start(self, chat_id):
         user = store.get(chat_id)
         if not user and store.count() >= MAX_USERS:
@@ -130,18 +161,28 @@ class Conversation:
                 "useful). Try again in a few days.")
             return
         if user and user["status"] in ("active", "paused"):
-            # /start doubles as "change my answers", so let them redo it.
             self.tg.send(chat_id,
-                         "Right now I'm watching:\n\n" + describe(user) +
-                         "\n\nAnswer these four again to replace that.")
-        else:
-            self.tg.send(chat_id, WELCOME)
-        store.upsert(chat_id, status="signup")
-        self.ask(chat_id, "theater")
+                         "You're already set up.\n\n" + describe(user) +
+                         "\n\n/reset to change any of this  ·  /status  ·  /stop")
+            return
+        self.begin(chat_id, WELCOME)
+
+    def reset(self, chat_id):
+        user = store.get(chat_id)
+        if not user:
+            self.begin(chat_id, WELCOME)
+            return
+        self.begin(chat_id,
+                   "Right now I'm watching:\n\n" + describe(user) +
+                   "\n\nLet's go through the questions again to replace that.")
 
     def answer(self, chat_id, field, value):
         store.upsert(chat_id, **{field: value})
         nxt = ORDER.index(field) + 1
+        if field == "party_size" and value == "1":
+            # Nobody sitting alone needs asking whether they'll sit together.
+            store.upsert(chat_id, together="na")
+            nxt = len(ORDER)
         if nxt < len(ORDER):
             self.ask(chat_id, ORDER[nxt])
             return
@@ -152,12 +193,14 @@ class Conversation:
             "Done — I'm watching.\n\n" + describe(user) +
             "\n\nCould be hours, could be days. Good seats are rare, so silence "
             "is normal. I'll message you the moment one appears.\n\n"
-            "/status  what I'm watching  ·  /pause  ·  /stop  ·  /test")
+            "/status  what I'm watching  ·  /reset  ·  /pause  ·  /stop  ·  /test")
 
     def command(self, chat_id, cmd):
         user = store.get(chat_id)
         if cmd == "/start":
             self.start(chat_id)
+        elif cmd == "/reset":
+            self.reset(chat_id)
         elif cmd == "/status":
             if not user or user["status"] not in ("active", "paused"):
                 self.tg.send(chat_id, "You're not signed up. Send /start.")
@@ -182,7 +225,7 @@ class Conversation:
                                   "Send /start if you ever want back in.")
         elif cmd == "/test":
             self.tg.send(chat_id,
-                         "🎟️ Metreon — 2 seats open\n"
+                         "🎟️ Metreon — 2 together\n"
                          "K18, K19  ·  center, back rows\n"
                          "Mon Aug 17, 6:00 PM\n"
                          "(this is a test — no seats have actually opened)")
@@ -190,8 +233,8 @@ class Conversation:
             self.tg.send(
                 chat_id,
                 "Commands:\n/start  sign up\n/status  what I'm watching\n"
-                "/pause  and  /resume\n/stop  leave and delete my details\n"
-                "/test  send me a fake alert")
+                "/reset  change my answers\n/pause  and  /resume\n"
+                "/stop  leave and delete my details\n/test  send me a fake alert")
 
     def handle(self, update):
         if "callback_query" in update:
@@ -208,7 +251,7 @@ class Conversation:
             # question we're actually on, or a double-tap asks the next
             # question twice and the whole flow doubles up.
             if not user or user["step"] != field:
-                self.tg.ack(q["id"], "Already answered — send /start to change it")
+                self.tg.ack(q["id"], "Already answered — /reset to change your answers")
                 if msg_id:
                     self.tg.edit(chat_id, msg_id,
                                  f"{QUESTION_TITLE[field]}\n(already answered)")
@@ -276,15 +319,41 @@ def wanted_showtimes(users):
     return sorted(out, key=lambda s: s["start"])
 
 
-def alert_text(show, seat_ids, user):
+def alert_text(show, groups, user):
+    """`groups` is a list of seat-id lists. One group per side-by-side block
+    when the user wants to sit together, otherwise a single group."""
     t = seats.THEATERS[show["theater"]]
     when = show["start"].strftime("%a %b %-d, %-I:%M %p")
     pos = "center" if user["row_position"] == "center" else "any"
-    n = len(seat_ids)
-    shown = ", ".join(seat_ids[:10]) + (f", +{n - 10} more" if n > 10 else "")
-    return (f"🎟️ {t['short']} — {n} seat{'s' if n != 1 else ''} open\n"
+    _, together = party_of(user)
+    flat = [s for g in groups for s in g]
+    n = len(flat)
+    if together:
+        shown = "   /   ".join(", ".join(g) for g in groups[:3])
+        if len(groups) > 3:
+            shown += f"   /   +{len(groups) - 3} more blocks"
+        headline = (f"{len(groups[0])} together" if len(groups) == 1
+                    else f"{len(groups)} blocks together")
+    else:
+        shown = ", ".join(flat[:10]) + (f", +{n - 10} more" if n > 10 else "")
+        headline = f"{n} seat{'s' if n != 1 else ''} open"
+    return (f"🎟️ {t['short']} — {headline}\n"
             f"{shown}  ·  {pos}, {seats.ZONE_LABEL[user['row_zone']]}\n"
             f"{when}\n{show['url'] or ''}")
+
+
+def matching_groups(sm, user):
+    """Seats worth telling this user about, grouped for the message.
+
+    Returns [] when there aren't enough — a party of three hearing about a
+    single seat is just noise.
+    """
+    size, together = party_of(user)
+    zone, pos = user["row_zone"], user["row_position"]
+    if together:
+        return seats.adjacent_blocks(sm, zone, pos, size)
+    free = seats.available_seats(sm, zone, pos)
+    return [free] if len(free) >= size else []
 
 
 def watcher_pass(tg, due, dry_run=False):
@@ -324,18 +393,20 @@ def watcher_pass(tg, due, dry_run=False):
                 continue
             if not seats.time_matches(show["start"], user["times"]):
                 continue
-            good = seats.available_seats(sm, user["row_zone"], user["row_position"])
-            if not good:
+            groups = matching_groups(sm, user)
+            if not groups or dry_run:
                 continue
-            if dry_run:
-                continue
-            fresh = store.unsent(user["chat_id"], show["hash"], good)
-            if not fresh:
+            # A block counts as news if any seat in it is new to this user;
+            # we then send the whole block so it still reads as "3 together".
+            groups = [g for g in groups
+                      if store.unsent(user["chat_id"], show["hash"], g)]
+            if not groups:
                 continue
             if per_user.get(user["chat_id"], 0) >= MAX_ALERTS_PER_USER_PER_PASS:
                 continue
+            fresh = [s for g in groups for s in g]
             try:
-                tg.send(user["chat_id"], alert_text(show, fresh, user))
+                tg.send(user["chat_id"], alert_text(show, groups, user))
                 store.mark_sent(user["chat_id"], show["hash"], fresh)
                 per_user[user["chat_id"]] = per_user.get(user["chat_id"], 0) + 1
                 sent += 1

@@ -11,6 +11,7 @@ Deliberately knows nothing about Telegram or users.
 import json
 import math
 import re
+import statistics
 import time
 import urllib.error
 import urllib.request
@@ -190,6 +191,57 @@ def zone_rows(rows_by_letter, zone):
     return ordered[-take:]
 
 
+def _allowed_row(seats_in_row, position):
+    if position != "center":
+        return seats_in_row
+    if len(seats_in_row) <= 2 * EDGE_SEATS:
+        return []
+    return seats_in_row[EDGE_SEATS:len(seats_in_row) - EDGE_SEATS]
+
+
+def _pitch(seats_in_row):
+    """Typical gap between neighbouring seats in this row.
+
+    Used to spot aisles: Metreon's normal pitch is ~17.6 with aisles at 82
+    and 104; Regal's is ~40.2 with one aisle at 156.6. The seat data's own
+    leftNeighbor/rightNeighbor fields are too patchy to rely on — Metreon
+    fills in 5 of 419 — so we measure the geometry instead.
+    """
+    gaps = [b["x"] - a["x"] for a, b in zip(seats_in_row, seats_in_row[1:])]
+    return statistics.median(gaps) if gaps else 0.0
+
+
+def adjacent_blocks(seat_map_json, zone, position, size):
+    """Runs of `size` or more available seats sitting side by side.
+
+    A run breaks at a taken seat or an aisle, so a group is never told two
+    seats are together when there's a walkway between them.
+    """
+    rows = layout(seat_map_json)
+    wanted = set(zone_rows(rows, zone))
+    out = []
+    for letter, seats_in_row in rows.items():
+        if letter not in wanted:
+            continue
+        tolerance = _pitch(seats_in_row) * 1.5
+        run, prev = [], None
+        for seat in _allowed_row(seats_in_row, position):
+            gapped = prev is not None and tolerance and (seat["x"] - prev["x"]) > tolerance
+            if seat.get("status") != "A" or gapped:
+                if len(run) >= size:
+                    out.append(run)
+                run = []
+            if seat.get("status") == "A":
+                run.append(seat)
+                prev = seat
+            else:
+                prev = None
+        if len(run) >= size:
+            out.append(run)
+    out.sort(key=lambda r: (_row_order([row_letter(r[0]["id"])])[0], r[0]["x"]))
+    return [[s["id"] for s in r] for r in out]
+
+
 def available_seats(seat_map_json, zone, position):
     """Seat labels that are free, in the chosen zone, honouring center/edges.
 
@@ -201,13 +253,11 @@ def available_seats(seat_map_json, zone, position):
     rows = layout(seat_map_json)
     wanted = set(zone_rows(rows, zone))
     out = []
-    for letter, seats in rows.items():
+    for letter, seats_in_row in rows.items():
         if letter not in wanted:
             continue
-        row = seats
-        if position == "center":
-            row = row[EDGE_SEATS:len(row) - EDGE_SEATS] if len(row) > 2 * EDGE_SEATS else []
-        out += [s["id"] for s in row if s.get("status") == "A"]
+        out += [s["id"] for s in _allowed_row(seats_in_row, position)
+                if s.get("status") == "A"]
     return sorted(out, key=lambda sid: (_row_order([row_letter(sid)])[0], sid))
 
 

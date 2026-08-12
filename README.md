@@ -24,7 +24,7 @@ This is the multi-user successor to [odyssey-seat-watcher](https://github.com/LK
 
 ## Signup
 
-Four questions, every answer a button. Nobody types anything.
+Up to six questions, every answer a button. Nobody types anything.
 
 ```
 Which theatre?
@@ -42,6 +42,12 @@ Where in the row?
 
 When can you go?
   [ Evenings & weekends ]   [ Weekends only ]   [ Anytime ]
+
+How many seats do you need?
+  [ Just me ]  [ 2 ]  [ 3 ]  [ 4 or more ]
+
+Do they need to be side by side?          (only asked if more than one)
+  [ Yes — together or not at all ]   [ No — we can sit apart ]
 ```
 
 ## Why zones are proportions, not row letters
@@ -74,6 +80,23 @@ Resulting seat counts:
 | Middle & back + edges | 294 | 171 |
 
 The tightest setting watches 20% of Metreon.
+
+## Detecting seats that are genuinely together
+
+Groups need adjacent seats, and the seat data won't tell you which those are:
+`leftNeighbor`/`rightNeighbor` exist but are barely populated — Metreon fills
+in 5 of 419, Regal 234 of 243. So adjacency is measured from geometry instead.
+
+Each row has a consistent seat pitch, and an aisle shows up as an outlier:
+
+| | Normal pitch | Aisle gaps |
+|---|---|---|
+| Metreon | ~17.6 | 82.4, 103.6 |
+| Regal | ~40.2 | 156.6 |
+
+A run of available seats breaks at a taken seat *or* at any gap wider than
+1.5x that row's median pitch, so a party is never told two seats are together
+when there's a walkway between them.
 
 ## How it gets the data
 
@@ -140,7 +163,7 @@ For always-on hosting, `odyssey-bot.service` is a systemd unit that restarts on 
 
 ## What's stored about users
 
-A Telegram chat ID and four preferences. No names, no usernames, no phone numbers, no email — Telegram offers all of them and none are needed. `/stop` deletes the row outright rather than flagging it inactive.
+A Telegram chat ID and six preferences. No names, no usernames, no phone numbers, no email — Telegram offers all of them and none are needed. `/stop` deletes the row outright rather than flagging it inactive.
 
 ## Being a good citizen
 

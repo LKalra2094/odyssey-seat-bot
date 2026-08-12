@@ -35,9 +35,9 @@ At the bottom of the screen there's a big **START** button. Tap it.
 
 > **Why this matters:** Telegram doesn't let a bot message you until you've messaged it first. It's an anti-spam rule. If you skip this, the bot physically cannot reach you — so don't close the chat before tapping START.
 
-## Step 4 — Answer four questions
+## Step 4 — Answer the questions
 
-The bot asks four things. Every answer is a button — you never type anything.
+The bot asks up to six things. Every answer is a button — you never type anything.
 
 **Which theatre?**
 
@@ -74,6 +74,21 @@ Each option includes everything further back — if you choose "back half" and a
 | **Weekends only** | Saturday and Sunday |
 | **Anytime** | Including weekday mornings and afternoons |
 
+**How many seats do you need?**
+
+Just me, 2, 3, or 4 or more. If you need three seats, you won't be bothered about a single one.
+
+**Do they need to be side by side?**
+
+Only asked if you need more than one.
+
+| | |
+|---|---|
+| **Yes — together or not at all** | Only alerts when that many seats are genuinely next to each other, in the same row, with no aisle between them |
+| **No — we can sit apart** | Alerts whenever that many seats are free anywhere in your chosen area |
+
+Picking "together" means far fewer alerts, because cancellations usually free up single scattered seats rather than neat blocks. But every alert you do get is one you can actually use.
+
 That's it. You're watching.
 
 ## Step 5 — Wait
@@ -106,7 +121,8 @@ Type these into the chat any time.
 | `/resume` | Starts them again |
 | `/stop` | Leaves, and deletes your details completely |
 | `/test` | Sends you a fake alert, to check notifications work |
-| `/start` | Sign up, or change your answers |
+| `/reset` | Change your answers |
+| `/start` | Sign up |
 
 **Run `/test` right after signing up.** If it doesn't buzz your phone, fix that now rather than discovering it when a real seat opens.
 
@@ -144,6 +160,9 @@ Different settings. If they chose "middle & back" and you chose "back rows only,
 
 **It's been days with nothing. Is it broken?**
 Probably not — that's the normal state. Run `/test`; if the fake alert arrives, the bot is reaching you fine and there simply haven't been any good seats.
+
+**How do I change my answers?**
+Send `/reset` and go through the questions again.
 
 **Can I be more specific about what I want?**
 Not through the bot. Four questions covers most people, and every extra option is another thing to get wrong during signup.
