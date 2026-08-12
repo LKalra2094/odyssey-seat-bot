@@ -1,0 +1,24 @@
+[Unit]
+Description=Odyssey 70mm seat bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/odyssey-bot
+ExecStart=/usr/bin/python3 /home/ubuntu/odyssey-bot/bot.py run
+
+# Secrets: set with `sudo systemctl edit odyssey-bot`, which writes a
+# root-only override file rather than putting them here.
+#   [Service]
+#   Environment=TG_BOT_TOKEN=123456:AAH...
+#   Environment=ADMIN_CHAT_ID=987654321
+
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

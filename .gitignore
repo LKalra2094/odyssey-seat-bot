@@ -1,0 +1,7 @@
+config.json
+users.db
+users.db-journal
+*.db
+*.tmp
+__pycache__/
+*.pyc
