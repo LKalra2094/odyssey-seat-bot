@@ -91,8 +91,9 @@ QUESTIONS = {
     ),
     "party_size": (
         "How many seats do you need?",
-        [[("Just me", "party_size:1"), ("2", "party_size:2")],
-         [("3", "party_size:3"), ("4 or more", "party_size:4")]],
+        [[("Just me", "party_size:1"), ("2", "party_size:2"),
+          ("3", "party_size:3")],
+         [("4", "party_size:4"), ("5", "party_size:5")]],
     ),
     "together": (
         "Do they need to be side by side?",
@@ -102,6 +103,15 @@ QUESTIONS = {
 }
 
 ORDER = ["theater", "row_zone", "row_position", "times", "party_size", "together"]
+
+ACTIONS = (
+    "/status — what I'm watching for you\n"
+    "/reset — change your answers\n"
+    "/pause — stop alerts, keep your settings\n"
+    "/resume — start alerting again\n"
+    "/test — send a fake alert, to check it reaches you\n"
+    "/stop — leave, and delete everything I hold about you"
+)
 
 # First line of each question, for the "you picked X" confirmation.
 QUESTION_TITLE = {k: v[0].split("\n")[0] for k, v in QUESTIONS.items()}
@@ -130,7 +140,7 @@ def describe(user):
     if size == 1:
         party = "1 seat"
     else:
-        party = (f"{size}{'+' if size >= 4 else ''} seats, "
+        party = (f"{size} seats, "
                  f"{'side by side' if together else 'happy to sit apart'}")
     return (f"{where}\n"
             f"{seats.ZONE_LABEL[user['row_zone']].capitalize()} or further back, {pos}\n"
@@ -163,7 +173,7 @@ class Conversation:
         if user and user["status"] in ("active", "paused"):
             self.tg.send(chat_id,
                          "You're already set up.\n\n" + describe(user) +
-                         "\n\n/reset to change any of this  ·  /status  ·  /stop")
+                         "\n\nWhat you can do:\n" + ACTIONS)
             return
         self.begin(chat_id, WELCOME)
 
@@ -193,7 +203,7 @@ class Conversation:
             "Done — I'm watching.\n\n" + describe(user) +
             "\n\nCould be hours, could be days. Good seats are rare, so silence "
             "is normal. I'll message you the moment one appears.\n\n"
-            "/status  what I'm watching  ·  /reset  ·  /pause  ·  /stop  ·  /test")
+            "What you can do:\n" + ACTIONS)
 
     def command(self, chat_id, cmd):
         user = store.get(chat_id)
@@ -232,9 +242,7 @@ class Conversation:
         else:
             self.tg.send(
                 chat_id,
-                "Commands:\n/start  sign up\n/status  what I'm watching\n"
-                "/reset  change my answers\n/pause  and  /resume\n"
-                "/stop  leave and delete my details\n/test  send me a fake alert")
+                "What you can do:\n/start — sign up\n" + ACTIONS)
 
     def handle(self, update):
         if "callback_query" in update:

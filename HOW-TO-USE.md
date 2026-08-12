@@ -76,7 +76,7 @@ Each option includes everything further back — if you choose "back half" and a
 
 **How many seats do you need?**
 
-Just me, 2, 3, or 4 or more. If you need three seats, you won't be bothered about a single one.
+Just me, 2, 3, 4 or 5. If you need three seats, you won't be bothered about a single one.
 
 **Do they need to be side by side?**
 

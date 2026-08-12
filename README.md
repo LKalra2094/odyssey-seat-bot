@@ -44,7 +44,7 @@ When can you go?
   [ Evenings & weekends ]   [ Weekends only ]   [ Anytime ]
 
 How many seats do you need?
-  [ Just me ]  [ 2 ]  [ 3 ]  [ 4 or more ]
+  [ Just me ]  [ 2 ]  [ 3 ]  [ 4 ]  [ 5 ]
 
 Do they need to be side by side?          (only asked if more than one)
   [ Yes — together or not at all ]   [ No — we can sit apart ]
