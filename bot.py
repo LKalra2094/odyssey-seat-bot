@@ -93,6 +93,15 @@ QUESTIONS = {
 
 ORDER = ["theater", "row_zone", "row_position", "times"]
 
+# First line of each question, for the "you picked X" confirmation.
+QUESTION_TITLE = {k: v[0].split("\n")[0] for k, v in QUESTIONS.items()}
+
+# 'theater:AANEM' -> 'AMC Metreon (SF)'. The bit before the '·' is the label;
+# the rest is explanatory detail we don't need to echo back.
+CHOICE_LABEL = {data: text.split("·")[0].strip()
+                for _, rows in QUESTIONS.values()
+                for row in rows for text, data in row}
+
 
 def describe(user):
     where = ("both theatres" if user["theater"] == "both"
@@ -114,18 +123,20 @@ class Conversation:
 
     def start(self, chat_id):
         user = store.get(chat_id)
-        if user and user["status"] == "active":
-            self.tg.send(chat_id, "You're already set up.\n\n" + describe(user)
-                         + "\n\nUse /stop to leave, or /status any time.")
-            return
         if not user and store.count() >= MAX_USERS:
             self.tg.send(
                 chat_id,
                 "Sorry — the bot is full right now (it's capped so alerts stay "
                 "useful). Try again in a few days.")
             return
+        if user and user["status"] in ("active", "paused"):
+            # /start doubles as "change my answers", so let them redo it.
+            self.tg.send(chat_id,
+                         "Right now I'm watching:\n\n" + describe(user) +
+                         "\n\nAnswer these four again to replace that.")
+        else:
+            self.tg.send(chat_id, WELCOME)
         store.upsert(chat_id, status="signup")
-        self.tg.send(chat_id, WELCOME)
         self.ask(chat_id, "theater")
 
     def answer(self, chat_id, field, value):
@@ -185,11 +196,29 @@ class Conversation:
     def handle(self, update):
         if "callback_query" in update:
             q = update["callback_query"]
-            chat_id = q["message"]["chat"]["id"]
-            self.tg.ack(q["id"])
+            msg = q.get("message") or {}
+            chat_id = (msg.get("chat") or {}).get("id")
+            msg_id = msg.get("message_id")
             field, _, value = q.get("data", "").partition(":")
-            if field in QUESTIONS and value:
-                self.answer(chat_id, field, value)
+            if not chat_id or field not in QUESTIONS or not value:
+                self.tg.ack(q["id"])
+                return
+            user = store.get(chat_id)
+            # Telegram leaves old buttons tappable forever. Only honour the
+            # question we're actually on, or a double-tap asks the next
+            # question twice and the whole flow doubles up.
+            if not user or user["step"] != field:
+                self.tg.ack(q["id"], "Already answered — send /start to change it")
+                if msg_id:
+                    self.tg.edit(chat_id, msg_id,
+                                 f"{QUESTION_TITLE[field]}\n(already answered)")
+                return
+            self.tg.ack(q["id"])
+            if msg_id:
+                self.tg.edit(
+                    chat_id, msg_id,
+                    f"{QUESTION_TITLE[field]}\n✓ {CHOICE_LABEL.get(q['data'], value)}")
+            self.answer(chat_id, field, value)
             return
         msg = update.get("message") or {}
         chat_id = (msg.get("chat") or {}).get("id")
