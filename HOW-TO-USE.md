@@ -24,7 +24,7 @@ A "bot" is just an automated account. It isn't a person and it isn't AI — thin
 In Telegram, tap the **search icon** (magnifying glass, top of screen) and type:
 
 ```
-@ODYSSEY_BOT_USERNAME
+@Odyssey_seat_bot
 ```
 
 Tap it in the results. A chat opens.
