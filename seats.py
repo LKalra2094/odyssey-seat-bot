@@ -211,14 +211,34 @@ def _pitch(seats_in_row):
     return statistics.median(gaps) if gaps else 0.0
 
 
-def adjacent_blocks(seat_map_json, zone, position, size):
+def target_rows(rows_by_letter, zone, only=None):
+    """Which rows to look at: named rows if given, otherwise the zone.
+
+    `only` is a list of row letters. Any that don't exist in this auditorium
+    are simply ignored — Metreon has no row I, Regal has no K.
+    """
+    if only:
+        wanted = {r.upper() for r in only}
+        return [r for r in _row_order(rows_by_letter) if r in wanted]
+    return zone_rows(rows_by_letter, zone)
+
+
+def row_letters(theater_id):
+    """Row labels that actually exist in this theatre, front to back."""
+    shows = showtimes(theater_id)
+    if not shows:
+        return []
+    return _row_order(layout(seat_map(shows[0]["hash"])))
+
+
+def adjacent_blocks(seat_map_json, zone, position, size, only_rows=None):
     """Runs of `size` or more available seats sitting side by side.
 
     A run breaks at a taken seat or an aisle, so a group is never told two
     seats are together when there's a walkway between them.
     """
     rows = layout(seat_map_json)
-    wanted = set(zone_rows(rows, zone))
+    wanted = set(target_rows(rows, zone, only_rows))
     out = []
     for letter, seats_in_row in rows.items():
         if letter not in wanted:
@@ -242,7 +262,7 @@ def adjacent_blocks(seat_map_json, zone, position, size):
     return [[s["id"] for s in r] for r in out]
 
 
-def available_seats(seat_map_json, zone, position):
+def available_seats(seat_map_json, zone, position, only_rows=None):
     """Seat labels that are free, in the chosen zone, honouring center/edges.
 
     `position` is 'center' (skip EDGE_SEATS at each end of every row) or
@@ -251,7 +271,7 @@ def available_seats(seat_map_json, zone, position):
     seats, so seat numbers would cut in the wrong place.
     """
     rows = layout(seat_map_json)
-    wanted = set(zone_rows(rows, zone))
+    wanted = set(target_rows(rows, zone, only_rows))
     out = []
     for letter, seats_in_row in rows.items():
         if letter not in wanted:

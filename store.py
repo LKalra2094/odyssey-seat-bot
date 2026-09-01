@@ -26,8 +26,10 @@ CREATE TABLE IF NOT EXISTS users (
     row_zone     TEXT,      -- 'back_rows' | 'back_half' | 'middle_back'
     row_position TEXT,      -- 'center' | 'any'
     times        TEXT,      -- 'evenings_weekends' | 'weekends' | 'anytime'
-    party_size   TEXT,      -- '1' | '2' | '3' | '4'  (4 means 4 or more)
+    party_size   TEXT,      -- '1' .. '5'
     together     TEXT,      -- 'yes' | 'no' | 'na'  (na = party of one)
+    exact_rows   TEXT,      -- 'K,L,M' — overrides row_zone when set
+    exact_dates  TEXT,      -- '2026-09-12,2026-09-13' — overrides times when set
     status       TEXT,      -- 'signup' | 'active' | 'paused' | 'stopped'
     step         TEXT,      -- which signup question they're on
     joined_at    TEXT
@@ -64,12 +66,14 @@ def _migrate(conn):
     before party size existed, so nobody's alerts change until they /reset.
     """
     have = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
-    for column, default in (("party_size", "'1'"), ("together", "'na'")):
+    for column, default in (("party_size", "'1'"), ("together", "'na'"),
+                            ("exact_rows", "NULL"), ("exact_dates", "NULL")):
         if column not in have:
             conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT "
                          f"DEFAULT {default}")
-            conn.execute(f"UPDATE users SET {column} = {default} "
-                         f"WHERE {column} IS NULL")
+            if default != "NULL":
+                conn.execute(f"UPDATE users SET {column} = {default} "
+                             f"WHERE {column} IS NULL")
 
 
 def _now():
