@@ -17,7 +17,6 @@ Standard library only.
 
 import json
 import os
-import re
 import sys
 import threading
 import time
@@ -124,69 +123,6 @@ CHOICE_LABEL = {data: text.split("·")[0].strip()
                 for row in rows for text, data in row}
 
 
-# --- /exact: name precise rows and dates, for my own use -------------------
-
-MONTHS = {m: i for i, m in enumerate(
-    ["jan", "feb", "mar", "apr", "may", "jun",
-     "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
-
-
-def parse_rows(text):
-    """'K,L,M' or 'J-N' or 'k l m' -> ['J','K','L','M','N']."""
-    out = set()
-    for chunk in re.split(r"[,\s]+", text.strip().upper()):
-        if not chunk:
-            continue
-        span = re.fullmatch(r"([A-Z])\s*-\s*([A-Z])", chunk)
-        if span:
-            a, b = span.groups()
-            out.update(chr(c) for c in range(ord(a), ord(b) + 1))
-        elif re.fullmatch(r"[A-Z]{1,2}", chunk):
-            out.add(chunk)
-    return sorted(out, key=lambda r: (len(r), r))
-
-
-def parse_dates(text, today=None):
-    """'Sep 12, Sep 13' / '2026-09-12' / '9/12' -> ['2026-09-12', ...].
-
-    A bare day-and-month with no year is read as the next such date, so
-    'Sep 12' in December means next September rather than one long past.
-    """
-    today = today or datetime.now(seats.THEATERS["AANEM"]["tz"]).date()
-    out = set()
-    for chunk in re.split(r"[,;]+|\s{2,}", text.strip()):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        iso = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", chunk)
-        slash = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", chunk)
-        named = re.fullmatch(r"([a-zA-Z]{3,9})\.?\s*(\d{1,2})", chunk) or \
-            re.fullmatch(r"(\d{1,2})\s*([a-zA-Z]{3,9})\.?", chunk)
-        try:
-            if iso:
-                y, m, d = (int(x) for x in iso.groups())
-            elif slash:
-                m, d, y = int(slash.group(1)), int(slash.group(2)), slash.group(3)
-                y = int(y) + (2000 if y and len(y) == 2 else 0) if y else None
-            elif named:
-                a, b = named.groups()
-                if a[:3].lower() in MONTHS:
-                    m, d = MONTHS[a[:3].lower()], int(b)
-                else:
-                    m, d = MONTHS[b[:3].lower()], int(a)
-                y = None
-            else:
-                continue
-            if y is None:
-                y = today.year
-                if date(y, m, d) < today:
-                    y += 1
-            out.add(date(y, m, d).isoformat())
-        except (ValueError, KeyError):
-            continue
-    return sorted(out)
-
-
 def party_of(user):
     """How many seats they need, and whether they must be side by side."""
     try:
@@ -202,10 +138,10 @@ def listed(user, field):
 
 
 def show_matches_user(user, show):
-    """Named dates win over the chosen hours when they're set."""
+    """Both filters apply: named dates narrow the days, hours narrow the times."""
     dates = listed(user, "exact_dates")
-    if dates:
-        return show["start"].date().isoformat() in dates
+    if dates and show["start"].date().isoformat() not in dates:
+        return False
     return seats.time_matches(show["start"], user["times"])
 
 
@@ -268,8 +204,12 @@ class Conversation:
         if not user:
             self.begin(chat_id, WELCOME)
             return
+        was = describe(user)
+        # Any hand-set rows or dates go too, or they'd silently keep
+        # overriding whatever is answered below.
+        store.upsert(chat_id, exact_rows=None, exact_dates=None)
         self.begin(chat_id,
-                   "Right now I'm watching:\n\n" + describe(user) +
+                   "Right now I'm watching:\n\n" + was +
                    "\n\nLet's go through the questions again to replace that.")
 
     def answer(self, chat_id, field, value):
@@ -291,86 +231,8 @@ class Conversation:
             "is normal. I'll message you the moment one appears.\n\n"
             "What you can do:\n" + ACTIONS)
 
-    EXACT_HELP = (
-        "Name exact rows and dates, overriding the row zone and the hours.\n\n"
-        "/exact rows K,L,M\n"
-        "/exact dates Sep 12, Sep 13\n"
-        "/exact rows J-N dates 2026-09-12, 2026-09-13\n"
-        "/exact off — back to the normal presets\n\n"
-        "Theatre, center/edges, party size and side-by-side all still apply."
-    )
-
-    def exact(self, chat_id, args):
-        user = store.get(chat_id)
-        if not user or user["status"] not in ("active", "paused"):
-            self.tg.send(chat_id, "Sign up first with /start.")
-            return
-        text = args.strip()
-        if not text:
-            self.tg.send(chat_id, self.EXACT_HELP + "\n\nRight now:\n\n"
-                         + describe(user))
-            return
-        if text.lower() in ("off", "clear", "none"):
-            store.upsert(chat_id, exact_rows=None, exact_dates=None)
-            self.tg.send(chat_id, "Back to the normal presets.\n\n"
-                         + describe(store.get(chat_id)))
-            return
-
-        # "rows K,L,M dates Sep 12" — split on the keywords, in either order.
-        parts = re.split(r"\b(rows?|dates?)\b", text, flags=re.I)
-        fields, key = {}, None
-        for chunk in parts:
-            low = chunk.strip().lower()
-            if low in ("row", "rows", "date", "dates"):
-                key = "rows" if low.startswith("row") else "dates"
-            elif key and chunk.strip():
-                fields[key] = chunk.strip(" ,")
-                key = None
-        if not fields:
-            self.tg.send(chat_id, "I couldn't read that.\n\n" + self.EXACT_HELP)
-            return
-
-        updates, notes = {}, []
-        if "rows" in fields:
-            rows = parse_rows(fields["rows"])
-            if not rows:
-                self.tg.send(chat_id, f"No row letters in {fields['rows']!r}.")
-                return
-            updates["exact_rows"] = ",".join(rows)
-            # Row letters differ per theatre, so say what actually exists.
-            for tid in (seats.THEATERS if user["theater"] == "both"
-                        else [user["theater"]]):
-                have = set(seats.row_letters(tid))
-                hit = [r for r in rows if r in have]
-                miss = [r for r in rows if r not in have]
-                line = f"{seats.THEATERS[tid]['short']}: "
-                line += ", ".join(hit) if hit else "none of those exist"
-                if miss:
-                    line += f"  (no {', '.join(miss)} — it has {', '.join(sorted(have, key=lambda r: (len(r), r)))})"
-                notes.append(line)
-        if "dates" in fields:
-            dates = parse_dates(fields["dates"])
-            if not dates:
-                self.tg.send(chat_id, f"I couldn't read a date in "
-                                      f"{fields['dates']!r}. Try 'Sep 12' or '2026-09-12'.")
-                return
-            updates["exact_dates"] = ",".join(dates)
-
-        store.upsert(chat_id, **updates)
-        msg = "Done.\n\n" + describe(store.get(chat_id))
-        if notes:
-            msg += "\n\n" + "\n".join(notes)
-        msg += "\n\n/exact off to go back to presets."
-        self.tg.send(chat_id, msg)
-
     def command(self, chat_id, cmd, args=""):
         user = store.get(chat_id)
-        if cmd == "/exact":
-            if self.is_admin(chat_id):
-                self.exact(chat_id, args)
-            else:
-                self.command(chat_id, "/help")
-            return
         if cmd == "/start":
             self.start(chat_id)
         elif cmd == "/reset":

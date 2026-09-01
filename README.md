@@ -117,31 +117,11 @@ No login, no cookies, no API key, no browser. **Python standard library only** �
 
 Going direct to the theatre chains doesn't work: AMC and Regal both sit behind Cloudflare bot management and return `403` to plain HTTP clients. Fandango sells for both, doesn't challenge requests, and serves the chains' real seat maps. Their route table — including `/napi/seatMap/:showtimeHashCode` — is listed in the JavaScript their own site ships to every visitor.
 
-## Admin: naming exact rows and dates
-
-The presets cover most people, but sometimes you want one specific weekend and
-three specific rows. `/exact` is an admin-only typed command (it answers only
-the `admin_chat_id`) that overrides the row zone and the hours:
-
-```
-/exact rows K,L,M
-/exact dates Sep 12, Sep 13
-/exact rows J-N dates 2026-09-12, 2026-09-13
-/exact off                       back to the presets
-```
-
-Rows accept letters, spans (`J-N`) or both. Dates accept `Sep 12`, `9/12`,
-`2026-09-12` or `12 Sep`; a date with no year is read as the next one, so
-"Sep 12" in December means next September. Theatre, center/edges, party size
-and side-by-side all still apply on top.
-
-Row letters aren't portable between theatres, so setting them reports what
-actually exists — asking for K, L, M tells you Metreon has all three and Regal
-has none of them (it stops at I).
-
 ## Design notes
 
 **Polling cost doesn't grow with users.** Each seat map is fetched once per pass and matched against everyone's filters in memory. Five users or five hundred, Fandango sees identical traffic.
+
+**Per-user exact rows and dates** can be set directly in the database (`exact_rows`, `exact_dates`), narrowing beyond the presets; `/reset` clears them.
 
 **Only showtimes somebody wants are fetched.** If no user picked "anytime", weekday mornings are never requested.
 
